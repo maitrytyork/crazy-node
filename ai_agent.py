@@ -4,7 +4,7 @@ from google import genai
 from google.genai import types
 
 # -------------------------------------------------
-# 1️⃣ Validate Environment Variables
+# 1️⃣ Environment Variables
 # -------------------------------------------------
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -21,7 +21,7 @@ if not all([GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER]):
 print("✅ Environment variables validated")
 
 # -------------------------------------------------
-# 2️⃣ Initialize Gemini Client (FORCE v1 API)
+# 2️⃣ Initialize Gemini Client (AI Studio Compatible)
 # -------------------------------------------------
 
 client = genai.Client(
@@ -55,17 +55,14 @@ if not diff_text:
 
 print("✅ PR diff fetched")
 
-# -------------------------------------------------
-# 4️⃣ Prevent Large Diff Crash (Token Safety)
-# -------------------------------------------------
-
-MAX_CHARS = 20000
+# Limit diff size for safety
+MAX_CHARS = 15000
 if len(diff_text) > MAX_CHARS:
     diff_text = diff_text[:MAX_CHARS]
-    print("⚠ Diff truncated due to size limits")
+    print("⚠ Diff truncated due to size")
 
 # -------------------------------------------------
-# 5️⃣ Build Prompt
+# 4️⃣ Prompt
 # -------------------------------------------------
 
 prompt = f"""
@@ -85,19 +82,17 @@ PR Diff:
 """
 
 # -------------------------------------------------
-# 6️⃣ Call Gemini
+# 5️⃣ Call Gemini (Stable Model)
 # -------------------------------------------------
 
 try:
     response = client.models.generate_content(
-        model="gemini-1.5-flash-002",
+        model="gemini-1.0-pro",
         contents=prompt,
     )
 
-    if not response or not response.text:
-        ai_output = "⚠️ Gemini could not generate a response."
-    else:
-        ai_output = response.text
+    ai_output = response.text if response and response.text else \
+        "⚠️ Gemini could not generate a response."
 
     print("✅ Gemini response generated")
 
@@ -106,7 +101,7 @@ except Exception as e:
     raise Exception(f"❌ Gemini API error: {str(e)}")
 
 # -------------------------------------------------
-# 7️⃣ Post PR Comment
+# 6️⃣ Post Comment to PR
 # -------------------------------------------------
 
 comment_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/issues/{PR_NUMBER}/comments"
