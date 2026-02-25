@@ -2,35 +2,34 @@ name: AI Documentation Agent
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Fetch base branch
-        run: |
-          git fetch origin ${{ github.base_ref }}
-
-      - name: Generate PR Diff
-        run: |
-          git diff origin/${{ github.base_ref }} > pr_diff.txt
-
-      - name: Setup Python
+      - name: 🐍 Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
-      - name: Install dependencies
+      - name: 📦 Install Dependencies
         run: |
-          pip install google-generativeai requests
+          python -m pip install --upgrade pip
+          pip install --upgrade google-genai requests
 
-      - name: Run AI Agent
+      - name: 🤖 Run AI Agent
         run: python ai_agent.py
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}

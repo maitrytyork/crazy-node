@@ -1,80 +1,128 @@
 import os
 import requests
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
-# =========================
-# 1. Configure Gemini
-# =========================
+# -------------------------------------------------
+# 1️⃣ Validate Environment Variables
+# -------------------------------------------------
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-pro")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
+PR_NUMBER = os.getenv("PR_NUMBER")
 
-# =========================
-# 2. Read Git Diff
-# =========================
+if not GEMINI_API_KEY:
+    raise ValueError("❌ GEMINI_API_KEY not found.")
 
-with open("pr_diff.txt", "r", encoding="utf-8") as f:
-    diff = f.read()
+if not all([GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER]):
+    raise ValueError("❌ Missing GitHub environment variables.")
 
-if not diff.strip():
-    print("No changes detected.")
-    exit()
+print("✅ Environment variables validated")
 
-# =========================
-# 3. Prepare Prompt
-# =========================
+# -------------------------------------------------
+# 2️⃣ Initialize Gemini Client (FORCE v1 API)
+# -------------------------------------------------
 
-prompt = f"""
-You are a senior software architect and technical documentation expert.
+client = genai.Client(
+    api_key=GEMINI_API_KEY,
+    http_options=types.HttpOptions(api_version="v1")
+)
 
-Analyze the following git diff and generate:
+print("✅ Gemini client initialized")
 
-1. Change Type
-2. Technical Summary
-3. API Changes
-4. Breaking Changes
-5. Risk Level (Low/Medium/High)
-6. Code Review Feedback
-7. Markdown Technical Documentation
-8. Changelog Entry
+# -------------------------------------------------
+# 3️⃣ Fetch PR Diff
+# -------------------------------------------------
 
-Be structured and professional.
-
-GIT DIFF:
-{diff}
-"""
-
-# =========================
-# 4. Call Gemini
-# =========================
-
-response = model.generate_content(prompt)
-output = response.text
-
-# =========================
-# 5. Post Comment to PR
-# =========================
-
-repo = os.getenv("GITHUB_REPOSITORY")
-
-# Example: refs/pull/5/merge
-ref = os.getenv("GITHUB_REF")
-pr_number = ref.split("/")[2]
-
-url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
+diff_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/pulls/{PR_NUMBER}"
 
 headers = {
-    "Authorization": f"Bearer {os.getenv('GITHUB_TOKEN')}",
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3.diff"
+}
+
+response = requests.get(diff_url, headers=headers)
+
+if response.status_code != 200:
+    raise Exception(f"❌ Failed to fetch PR diff: {response.text}")
+
+diff_text = response.text.strip()
+
+if not diff_text:
+    print("⚠ No changes detected.")
+    exit(0)
+
+print("✅ PR diff fetched")
+
+# -------------------------------------------------
+# 4️⃣ Prevent Large Diff Crash (Token Safety)
+# -------------------------------------------------
+
+MAX_CHARS = 20000
+if len(diff_text) > MAX_CHARS:
+    diff_text = diff_text[:MAX_CHARS]
+    print("⚠ Diff truncated due to size limits")
+
+# -------------------------------------------------
+# 5️⃣ Build Prompt
+# -------------------------------------------------
+
+prompt = f"""
+You are a senior software architect.
+
+Analyze the following Pull Request diff and provide:
+
+1. Summary of changes
+2. Technical explanation
+3. Impact analysis
+4. Risks
+5. Suggested documentation updates
+6. Changelog entry (Markdown format)
+
+PR Diff:
+{diff_text}
+"""
+
+# -------------------------------------------------
+# 6️⃣ Call Gemini
+# -------------------------------------------------
+
+try:
+    response = client.models.generate_content(
+        model="gemini-1.5-flash-002",
+        contents=prompt,
+    )
+
+    if not response or not response.text:
+        ai_output = "⚠️ Gemini could not generate a response."
+    else:
+        ai_output = response.text
+
+    print("✅ Gemini response generated")
+
+except Exception as e:
+    print(f"Detailed API Error: {str(e)}")
+    raise Exception(f"❌ Gemini API error: {str(e)}")
+
+# -------------------------------------------------
+# 7️⃣ Post PR Comment
+# -------------------------------------------------
+
+comment_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/issues/{PR_NUMBER}/comments"
+
+comment_headers = {
+    "Authorization": f"token {GITHUB_TOKEN}",
     "Accept": "application/vnd.github.v3+json"
 }
 
-data = {
-    "body": output
+comment_body = {
+    "body": f"## 🤖 AI Documentation Agent Report\n\n{ai_output}"
 }
 
-response = requests.post(url, headers=headers, json=data)
+comment_response = requests.post(comment_url, json=comment_body, headers=comment_headers)
 
-if response.status_code == 201:
-    print("Comment posted successfully.")
-else:
-    print("Failed to post comment:", response.text)
+if comment_response.status_code != 201:
+    raise Exception(f"❌ Failed to post PR comment: {comment_response.text}")
+
+print("🚀 AI documentation comment posted successfully.")
