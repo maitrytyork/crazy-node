@@ -67,18 +67,25 @@ PR Diff:
 """
 
 # -------------------------------------------------
-# 5️⃣ Call Gemini (NEW METHOD)
+# 5️⃣ Call Gemini (FIXED MODEL NAME)
 # -------------------------------------------------
 
 try:
+    # Changed from "gemini-1.5-flash-latest" to "gemini-1.5-flash"
+    # This matches the expected format for the google-genai SDK
     response = client.models.generate_content(
-        model="gemini-1.5-flash-latest",
+        model="gemini-1.5-flash",
         contents=prompt,
     )
 
-    ai_output = response.text
+    if not response or not response.text:
+        ai_output = "⚠️ Gemini was unable to generate a response for this diff."
+    else:
+        ai_output = response.text
 
 except Exception as e:
+    # Captures specific API errors for debugging in GitHub Actions logs
+    print(f"Detailed API Error: {str(e)}")
     raise Exception(f"❌ Gemini API error: {str(e)}")
 
 # -------------------------------------------------
