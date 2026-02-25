@@ -1,40 +1,31 @@
 import os
 import requests
-import google.generativeai as genai
+from google import genai
 
 # -------------------------------------------------
-# 1️⃣ Configure Gemini
+# 1️⃣ Configure Gemini (New SDK)
 # -------------------------------------------------
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
-    raise ValueError("❌ GEMINI_API_KEY not found in environment variables.")
+    raise ValueError("❌ GEMINI_API_KEY not found.")
 
-genai.configure(api_key=GEMINI_API_KEY)
-
-# Free tier safe model
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # -------------------------------------------------
-# 2️⃣ Get GitHub Environment Variables
+# 2️⃣ GitHub Environment Variables
 # -------------------------------------------------
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 PR_NUMBER = os.getenv("PR_NUMBER")
 
-if not GITHUB_TOKEN:
-    raise ValueError("❌ GITHUB_TOKEN not found.")
-
-if not GITHUB_REPOSITORY:
-    raise ValueError("❌ GITHUB_REPOSITORY not found.")
-
-if not PR_NUMBER:
-    raise ValueError("❌ PR_NUMBER not found.")
+if not all([GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER]):
+    raise ValueError("❌ Missing GitHub environment variables.")
 
 # -------------------------------------------------
-# 3️⃣ Fetch PR Diff from GitHub API
+# 3️⃣ Fetch PR Diff
 # -------------------------------------------------
 
 diff_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/pulls/{PR_NUMBER}"
@@ -52,43 +43,46 @@ if response.status_code != 200:
 diff_text = response.text
 
 if not diff_text.strip():
-    print("⚠ No changes detected in PR.")
+    print("⚠ No changes detected.")
     exit(0)
 
 # -------------------------------------------------
-# 4️⃣ Prepare Prompt for AI
+# 4️⃣ Prompt
 # -------------------------------------------------
 
 prompt = f"""
-You are a senior software architect reviewing a Pull Request.
+You are a senior software architect.
 
-Analyze the following PR diff and provide:
+Analyze the following Pull Request diff and provide:
 
-1. 📌 Summary of changes
-2. 🛠 Technical explanation
-3. 📈 Impact analysis
-4. ⚠ Potential risks or concerns
-5. 📖 Suggested documentation updates
-6. 🧾 Changelog entry
+1. Summary of changes
+2. Technical explanation
+3. Impact analysis
+4. Risks
+5. Suggested documentation updates
+6. Changelog entry
 
-Be clear, structured, and professional.
-
-Pull Request Diff:
+PR Diff:
 {diff_text}
 """
 
 # -------------------------------------------------
-# 5️⃣ Generate AI Response
+# 5️⃣ Call Gemini (NEW METHOD)
 # -------------------------------------------------
 
 try:
-    ai_response = model.generate_content(prompt)
-    ai_output = ai_response.text
+    response = client.models.generate_content(
+        model="gemini-1.5-flash-latest",
+        contents=prompt,
+    )
+
+    ai_output = response.text
+
 except Exception as e:
     raise Exception(f"❌ Gemini API error: {str(e)}")
 
 # -------------------------------------------------
-# 6️⃣ Post Comment to PR
+# 6️⃣ Post PR Comment
 # -------------------------------------------------
 
 comment_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/issues/{PR_NUMBER}/comments"
