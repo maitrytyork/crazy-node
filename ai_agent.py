@@ -60,7 +60,7 @@ PR Diff:
 
 try:
     ai_response = client.models.generate_content(
-        model="gemini-2.0-flash",   # ✅ WORKING MODEL
+        model="gemini-2.5-flash",   # ✅ WORKING MODEL
         contents=prompt
     )
 
