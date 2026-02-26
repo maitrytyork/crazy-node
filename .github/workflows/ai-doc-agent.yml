@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write          # REQUIRED for committing docs
+  contents: write
   pull-requests: write
 
 jobs:
@@ -14,12 +14,14 @@ jobs:
 
     steps:
       # ---------------------------------------
-      # 📥 Checkout Repository (Full History)
+      # 📥 Checkout Actual PR Branch
       # ---------------------------------------
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # Required to push changes
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          persist-credentials: true
 
       # ---------------------------------------
       # 🐍 Setup Python
@@ -38,19 +40,11 @@ jobs:
           pip install --upgrade google-genai requests
 
       # ---------------------------------------
-      # 🔁 Prevent Infinite Loop (Skip bot commits)
+      # 🔁 Prevent Infinite Loop
       # ---------------------------------------
-      - name: 🛑 Skip if commit by bot
+      - name: 🛑 Skip if bot commit
         if: github.actor == 'ai-doc-bot'
-        run: |
-          echo "Skipping workflow for bot commit"
-          exit 0
-
-      # ---------------------------------------
-      # 🧠 Set PR Branch
-      # ---------------------------------------
-      - name: 🔀 Set PR Branch
-        run: echo "PR_BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
+        run: echo "Skipping workflow for bot commit"
 
       # ---------------------------------------
       # 🤖 Run AI Agent
@@ -61,5 +55,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_BRANCH: ${{ env.PR_BRANCH }}
+          PR_BRANCH: ${{ github.head_ref }}
         run: python ai_agent.py

@@ -17,6 +17,7 @@ if not all([GEMINI_API_KEY, GITHUB_TOKEN, PR_NUMBER, REPO, PR_BRANCH]):
     raise Exception("❌ Missing required environment variables")
 
 print("✅ Environment validated")
+print(f"🔀 Working on branch: {PR_BRANCH}")
 
 # =====================================
 # 2️⃣ Initialize Gemini Client
@@ -51,7 +52,7 @@ Analyze the following Pull Request diff and generate:
 
 1. Executive Summary
 2. Technical Summary
-3. Change Classification (Feature/Bug/Refactor/etc.)
+3. Change Classification
 4. Risk Level (Low/Medium/High + score out of 10)
 5. Architectural Impact
 6. Suggested Test Cases
@@ -73,7 +74,7 @@ print("✅ PR intelligence generated")
 # =====================================
 comment_url = f"https://api.github.com/repos/{REPO}/issues/{PR_NUMBER}/comments"
 
-requests.post(
+comment_res = requests.post(
     comment_url,
     headers={
         "Authorization": f"Bearer {GITHUB_TOKEN}",
@@ -82,7 +83,10 @@ requests.post(
     json={"body": f"## 🤖 AI PR Intelligence Report\n\n{pr_report}"}
 )
 
-print("✅ Comment posted")
+if comment_res.status_code == 201:
+    print("✅ Comment posted")
+else:
+    print("⚠️ Failed to post comment:", comment_res.text)
 
 # =====================================
 # 6️⃣ Create PR Snapshot File
@@ -91,7 +95,9 @@ docs_path = Path("docs/pr-history")
 docs_path.mkdir(parents=True, exist_ok=True)
 
 snapshot_file = docs_path / f"pr-{PR_NUMBER}.md"
-snapshot_file.write_text(f"# PR #{PR_NUMBER} Technical Snapshot\n\n{pr_report}")
+snapshot_file.write_text(
+    f"# PR #{PR_NUMBER} Technical Snapshot\n\n{pr_report}"
+)
 
 print("✅ PR snapshot created")
 
@@ -103,7 +109,7 @@ def collect_source_files():
     code_content = ""
     for path in Path(".").rglob("*"):
         if path.suffix in [".ts", ".js", ".py", ".java", ".go", ".cs"]:
-            if "node_modules" in str(path) or ".git" in str(path) or "docs" in str(path):
+            if any(x in str(path) for x in ["node_modules", ".git", "docs"]):
                 continue
             try:
                 code_content += f"\n\n# File: {path}\n"
@@ -118,11 +124,10 @@ full_codebase = collect_source_files()
 architecture_prompt = f"""
 You are a Senior Software Architect.
 
-Analyze the following entire project codebase and generate a complete
+Analyze the entire project and generate a complete
 System Architecture Document.
 
 Include:
-
 1. System Overview
 2. Core Modules & Responsibilities
 3. Architectural Pattern
@@ -143,28 +148,52 @@ arch_response = client.models.generate_content(
 
 architecture_doc = arch_response.text
 
-architecture_path = Path("docs")
-architecture_path.mkdir(exist_ok=True)
-
-(Path("docs/architecture.md")).write_text(
+architecture_file = Path("docs/architecture.md")
+architecture_file.write_text(
     "# System Architecture\n\n" + architecture_doc
 )
 
 print("✅ architecture.md regenerated")
 
 # =====================================
-# 8️⃣ Commit & Push Docs Changes
+# 8️⃣ Commit & Push (SAFE VERSION)
 # =====================================
+
 try:
-    subprocess.run(["git", "config", "user.name", "ai-doc-bot"])
-    subprocess.run(["git", "config", "user.email", "bot@ai-doc.local"])
-    subprocess.run(["git", "add", "docs"])
-    subprocess.run(["git", "commit", "-m", "docs: update architecture and PR snapshot"])
-    subprocess.run(["git", "push", "origin", PR_BRANCH])
+    # Ensure correct branch (fix detached HEAD issue)
+    subprocess.run(["git", "checkout", PR_BRANCH], check=True)
 
-    print("✅ Documentation committed and pushed")
+    subprocess.run(["git", "config", "user.name", "ai-doc-bot"], check=True)
+    subprocess.run(["git", "config", "user.email", "bot@ai-doc.local"], check=True)
 
-except Exception as e:
-    print("⚠️ No changes to commit or push failed:", str(e))
+    subprocess.run(["git", "add", "docs"], check=True)
+
+    commit = subprocess.run(
+        ["git", "commit", "-m", "docs: update architecture and PR snapshot"],
+        capture_output=True,
+        text=True
+    )
+
+    if commit.returncode != 0:
+        print("⚠️ No changes to commit")
+    else:
+        print("✅ Commit created")
+
+        push = subprocess.run(
+            ["git", "push", "origin", PR_BRANCH],
+            capture_output=True,
+            text=True
+        )
+
+        if push.returncode != 0:
+            print("❌ Push failed:")
+            print(push.stderr)
+            raise Exception("Push failed")
+        else:
+            print("✅ Push successful")
+
+except subprocess.CalledProcessError as e:
+    print("❌ Git command failed:", e)
+    raise
 
 print("🎉 Living Engineering Documentation System completed successfully!")
