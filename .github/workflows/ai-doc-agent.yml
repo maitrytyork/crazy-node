@@ -1,35 +1,65 @@
-name: AI Documentation Agent
+name: AI Living Documentation Agent
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: write          # REQUIRED for committing docs
+  pull-requests: write
+
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      pull-requests: write
-
     steps:
+      # ---------------------------------------
+      # 📥 Checkout Repository (Full History)
+      # ---------------------------------------
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Required to push changes
 
+      # ---------------------------------------
+      # 🐍 Setup Python
+      # ---------------------------------------
       - name: 🐍 Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # ---------------------------------------
+      # 📦 Install Dependencies
+      # ---------------------------------------
       - name: 📦 Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade google-genai requests
 
+      # ---------------------------------------
+      # 🔁 Prevent Infinite Loop (Skip bot commits)
+      # ---------------------------------------
+      - name: 🛑 Skip if commit by bot
+        if: github.actor == 'ai-doc-bot'
+        run: |
+          echo "Skipping workflow for bot commit"
+          exit 0
+
+      # ---------------------------------------
+      # 🧠 Set PR Branch
+      # ---------------------------------------
+      - name: 🔀 Set PR Branch
+        run: echo "PR_BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
+
+      # ---------------------------------------
+      # 🤖 Run AI Agent
+      # ---------------------------------------
       - name: 🤖 Run AI Agent
-        run: python ai_agent.py
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_BRANCH: ${{ env.PR_BRANCH }}
+        run: python ai_agent.py
