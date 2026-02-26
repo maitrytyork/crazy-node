@@ -3,7 +3,7 @@
  * Senior-level concise example for testing AI documentation agent
  */
 
-export type Currency = "USD" | "EUR" | "INR" | "BOB";
+export type Currency = "USD" | "EUR" | "INR" | "BOB" | "BRL";
 
 export interface PaymentRequest {
   userId: string;
